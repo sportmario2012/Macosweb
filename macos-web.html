@@ -1,0 +1,1282 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>macOS Web</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+:root{
+  --menubar-h:28px;
+  --glass: rgba(255,255,255,.55);
+  --win-bg: rgba(246,246,248,.92);
+  --accent:#0a84ff;
+}
+html,body{ height:100%; overflow:hidden; }
+body{
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, ui-sans-serif, sans-serif;
+  -webkit-font-smoothing:antialiased;
+  user-select:none;
+  background:#000;
+}
+#desktop{
+  position:fixed; inset:0;
+  background-size:cover; background-position:center;
+  transition:background .6s ease;
+}
+/* ---------- BOOT ---------- */
+#boot{
+  position:fixed; inset:0; background:#000; z-index:9999;
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:40px;
+  transition:opacity .8s ease;
+}
+#boot.done{ opacity:0; pointer-events:none; }
+#boot .apple{ font-size:72px; color:#fff; }
+#boot .bar{ width:180px; height:5px; background:#333; border-radius:3px; overflow:hidden; }
+#boot .bar i{ display:block; height:100%; width:0; background:#fff; border-radius:3px; transition:width .3s; }
+/* ---------- MENU BAR ---------- */
+#menubar{
+  position:fixed; top:0; left:0; right:0; height:var(--menubar-h); z-index:5000;
+  display:flex; align-items:center; padding:0 12px; gap:2px;
+  background:var(--glass); backdrop-filter:blur(30px) saturate(180%); -webkit-backdrop-filter:blur(30px) saturate(180%);
+  font-size:13px; color:#1a1a1a;
+}
+#menubar .mitem{
+  padding:2px 9px; border-radius:5px; cursor:default; white-space:nowrap;
+}
+#menubar .mitem:hover, #menubar .mitem.open{ background:rgba(0,0,0,.12); }
+#menubar .apple-m{ font-size:15px; padding:0 10px; }
+#menubar .appname{ font-weight:700; }
+#menubar .spacer{ flex:1; }
+#menubar .status{ display:flex; align-items:center; gap:4px; }
+#menubar .status .mitem{ padding:2px 7px; display:flex; align-items:center; }
+#menubar svg{ width:16px; height:16px; display:block; }
+/* dropdown */
+.dropdown{
+  position:fixed; z-index:5001; min-width:220px;
+  background:rgba(248,248,250,.85); backdrop-filter:blur(40px) saturate(180%); -webkit-backdrop-filter:blur(40px) saturate(180%);
+  border-radius:8px; padding:5px; box-shadow:0 10px 40px rgba(0,0,0,.3), 0 0 0 .5px rgba(0,0,0,.15);
+  font-size:13px; display:none;
+}
+.dropdown.show{ display:block; }
+.dropdown .dd-item{ padding:4px 10px; border-radius:5px; cursor:default; display:flex; justify-content:space-between; }
+.dropdown .dd-item:hover{ background:var(--accent); color:#fff; }
+.dropdown .dd-sep{ height:1px; background:rgba(0,0,0,.12); margin:5px 10px; }
+.dropdown .dd-item span.kbd{ opacity:.5; font-size:12px; }
+/* ---------- DOCK ---------- */
+#dock-wrap{
+  position:fixed; bottom:8px; left:0; right:0; z-index:5000;
+  display:flex; justify-content:center; pointer-events:none;
+}
+#dock{
+  pointer-events:auto;
+  display:flex; align-items:flex-end; gap:4px; padding:6px 8px;
+  background:rgba(255,255,255,.32); backdrop-filter:blur(30px) saturate(180%); -webkit-backdrop-filter:blur(30px) saturate(180%);
+  border-radius:22px; box-shadow:0 8px 30px rgba(0,0,0,.25), inset 0 0 0 .5px rgba(255,255,255,.5);
+  height:66px;
+}
+.dock-item{
+  position:relative; width:52px; height:52px; cursor:pointer;
+  display:flex; align-items:center; justify-content:center;
+  transition:width .12s ease, height .12s ease, margin .12s ease;
+  transform-origin:bottom center;
+}
+.dock-item svg, .dock-item .ic{ width:100%; height:100%; border-radius:12px; display:block; }
+.dock-item .dot{
+  position:absolute; bottom:-5px; left:50%; transform:translateX(-50%);
+  width:4px; height:4px; border-radius:50%; background:rgba(0,0,0,.55); display:none;
+}
+.dock-item.running .dot{ display:block; }
+.dock-item .tip{
+  position:absolute; bottom:calc(100% + 12px); left:50%; transform:translateX(-50%);
+  background:rgba(40,40,45,.85); color:#fff; font-size:12px; padding:3px 10px; border-radius:6px;
+  white-space:nowrap; opacity:0; pointer-events:none; transition:opacity .15s;
+  backdrop-filter:blur(10px);
+}
+.dock-item:hover .tip{ opacity:1; }
+.dock-sep{ width:1px; height:48px; background:rgba(0,0,0,.18); margin:0 4px; align-self:center; }
+/* ---------- WINDOWS ---------- */
+.window{
+  position:fixed; z-index:100;
+  background:var(--win-bg); backdrop-filter:blur(30px); -webkit-backdrop-filter:blur(30px);
+  border-radius:11px; overflow:hidden;
+  box-shadow:0 22px 70px rgba(0,0,0,.4), 0 0 0 .5px rgba(0,0,0,.2);
+  display:flex; flex-direction:column;
+  min-width:320px; min-height:200px;
+}
+.window.inactive{ box-shadow:0 10px 35px rgba(0,0,0,.22), 0 0 0 .5px rgba(0,0,0,.15); }
+.window.maximized{ border-radius:0; }
+.titlebar{
+  height:38px; flex:0 0 38px; display:flex; align-items:center; padding:0 12px;
+  cursor:default; position:relative;
+}
+.titlebar .title{
+  position:absolute; left:50%; transform:translateX(-50%);
+  font-size:13px; font-weight:600; color:#3a3a3c; white-space:nowrap;
+}
+.window.inactive .titlebar .title{ color:#9a9a9e; }
+.tlights{ display:flex; gap:8px; }
+.tl{
+  width:12px; height:12px; border-radius:50%; cursor:pointer; position:relative;
+  display:flex; align-items:center; justify-content:center;
+}
+.tl.close{ background:#ff5f57; box-shadow:inset 0 0 0 .5px rgba(0,0,0,.15); }
+.tl.min{ background:#febc2e; box-shadow:inset 0 0 0 .5px rgba(0,0,0,.15); }
+.tl.max{ background:#28c840; box-shadow:inset 0 0 0 .5px rgba(0,0,0,.15); }
+.window.inactive .tl{ background:#d5d5d7 !important; }
+.tl span{ opacity:0; font-size:9px; line-height:1; color:rgba(0,0,0,.55); font-weight:700; }
+.tlights:hover .tl span{ opacity:1; }
+.win-body{ flex:1; overflow:hidden; display:flex; position:relative; }
+.resizer{
+  position:absolute; right:0; bottom:0; width:16px; height:16px; cursor:nwse-resize; z-index:10;
+}
+/* ---------- FINDER ---------- */
+.finder{ display:flex; width:100%; }
+.finder .sidebar{
+  width:180px; flex:0 0 180px; background:rgba(235,235,240,.6);
+  padding:10px 8px; font-size:13px; overflow-y:auto;
+  border-right:1px solid rgba(0,0,0,.08);
+}
+.finder .sidebar .sb-title{ font-size:11px; font-weight:700; color:#86868b; padding:6px 8px 2px; }
+.finder .sidebar .sb-item{
+  padding:4px 8px; border-radius:6px; cursor:default; display:flex; align-items:center; gap:7px; color:#333;
+}
+.finder .sidebar .sb-item:hover{ background:rgba(0,0,0,.06); }
+.finder .sidebar .sb-item.sel{ background:rgba(0,0,0,.1); }
+.finder .main{ flex:1; overflow-y:auto; padding:14px; background:#fff; }
+.finder .fgrid{ display:flex; flex-wrap:wrap; gap:6px; align-content:flex-start; }
+.fitem{
+  width:96px; padding:8px 4px; border-radius:8px; text-align:center; cursor:default;
+  display:flex; flex-direction:column; align-items:center; gap:4px;
+}
+.fitem:hover{ background:rgba(0,0,0,.05); }
+.fitem .fic{ font-size:44px; line-height:1.1; }
+.fitem .fname{ font-size:12px; color:#1d1d1f; word-break:break-word; line-height:1.25; }
+.finder .pathbar{
+  font-size:12px; color:#86868b; padding:6px 14px; border-top:1px solid rgba(0,0,0,.08); background:rgba(245,245,247,.8);
+}
+/* ---------- TERMINAL ---------- */
+.terminal{
+  width:100%; background:rgba(24,24,28,.94); color:#e8e8e8;
+  font-family:"SF Mono", ui-monospace, Menlo, Consolas, monospace; font-size:13px;
+  padding:10px 12px; overflow-y:auto; cursor:text; line-height:1.5;
+}
+.terminal .tline{ white-space:pre-wrap; word-break:break-all; }
+.terminal .prompt-user{ color:#6cd97e; }
+.terminal .prompt-path{ color:#6ab7ff; }
+.terminal input{
+  background:transparent; border:none; outline:none; color:#e8e8e8;
+  font:inherit; width:60%; caret-color:#e8e8e8;
+}
+.terminal .tin{ display:flex; }
+/* ---------- SAFARI ---------- */
+.safari{ display:flex; flex-direction:column; width:100%; background:#fff; }
+.safari .toolbar{
+  display:flex; align-items:center; gap:8px; padding:6px 12px;
+  background:rgba(240,240,243,.9); border-bottom:1px solid rgba(0,0,0,.08);
+}
+.safari .nav-btn{
+  border:none; background:transparent; font-size:16px; color:#555; cursor:pointer;
+  width:28px; height:28px; border-radius:6px;
+}
+.safari .nav-btn:hover{ background:rgba(0,0,0,.07); }
+.safari .urlbar{
+  flex:1; height:30px; border-radius:8px; border:none; outline:none;
+  background:rgba(0,0,0,.06); padding:0 12px; font-size:13px; text-align:center; color:#333;
+}
+.safari .urlbar:focus{ text-align:left; background:#fff; box-shadow:0 0 0 3px rgba(10,132,255,.35); }
+.safari iframe{ flex:1; border:none; width:100%; background:#fff; }
+/* ---------- NOTES ---------- */
+.notes{ display:flex; width:100%; background:#fff; }
+.notes textarea{
+  flex:1; border:none; outline:none; resize:none; padding:16px 18px;
+  font:15px/1.6 -apple-system, "Segoe UI", sans-serif; color:#1d1d1f; background:#fffdf5;
+}
+.notesapp{ display:flex; width:100%; background:#fff; }
+.notesapp .n-side{
+  width:230px; flex:0 0 230px; display:flex; flex-direction:column;
+  background:rgba(246,244,238,.85); border-right:1px solid rgba(0,0,0,.08);
+}
+.notesapp .n-tools{
+  flex:0 0 auto; display:flex; gap:6px; padding:8px 10px;
+  border-bottom:1px solid rgba(0,0,0,.07);
+}
+.notesapp .n-btn{
+  border:none; background:transparent; color:#b8860b; font-size:17px; cursor:pointer;
+  width:30px; height:28px; border-radius:6px; display:flex; align-items:center; justify-content:center;
+}
+.notesapp .n-btn:hover{ background:rgba(0,0,0,.07); }
+.notesapp .n-list{ flex:1; overflow-y:auto; padding:6px; }
+.notesapp .n-item{
+  padding:9px 12px; border-radius:8px; cursor:default; margin-bottom:2px;
+}
+.notesapp .n-item:hover{ background:rgba(0,0,0,.05); }
+.notesapp .n-item.sel{ background:#ffe266; }
+.notesapp .n-title{
+  font-size:13px; font-weight:700; color:#1d1d1f;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.notesapp .n-prev{
+  font-size:12px; color:#86868b; margin-top:2px;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.notesapp .n-empty{ color:#a0a0a5; font-size:13px; text-align:center; padding:26px 12px; line-height:1.6; }
+.notesapp .n-editor{ flex:1; display:flex; }
+.notesapp textarea{
+  flex:1; border:none; outline:none; resize:none; padding:18px 20px;
+  font:15px/1.65 -apple-system, "Segoe UI", sans-serif; color:#1d1d1f; background:#fffdf5;
+}
+.notesapp textarea:disabled{ background:#faf9f4; }
+/* ---------- CALCULATOR ---------- */
+.calc{ display:flex; flex-direction:column; width:100%; background:rgba(40,40,44,.96); }
+.calc .display{
+  flex:0 0 84px; color:#fff; font-size:46px; font-weight:300; text-align:right;
+  padding:14px 20px 0; overflow:hidden; white-space:nowrap;
+}
+.calc .keys{ flex:1; display:grid; grid-template-columns:repeat(4,1fr); gap:1px; padding:8px; }
+.calc button{
+  border:none; border-radius:50px; margin:4px; font-size:20px; cursor:pointer; color:#fff;
+  background:#5f5f63;
+}
+.calc button:active{ filter:brightness(1.35); }
+.calc button.fn{ background:#a0a0a5; color:#000; }
+.calc button.op{ background:#ff9f0a; }
+.calc button.zero{ grid-column:span 2; }
+/* ---------- SETTINGS ---------- */
+.settings{ width:100%; padding:20px 24px; overflow-y:auto; background:#f5f5f7; }
+.settings h2{ font-size:19px; margin-bottom:14px; color:#1d1d1f; }
+.settings .wp-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(130px,1fr)); gap:12px; }
+.settings .wp{
+  height:82px; border-radius:10px; cursor:pointer; background-size:cover; background-position:center;
+  box-shadow:0 0 0 1px rgba(0,0,0,.1);
+  position:relative;
+}
+.settings .wp.sel{ box-shadow:0 0 0 3px var(--accent); }
+.settings .wp .wpn{
+  position:absolute; bottom:6px; left:8px; font-size:11px; color:#fff; text-shadow:0 1px 3px rgba(0,0,0,.6);
+}
+.settings .row{ margin-top:22px; font-size:14px; color:#333; }
+/* ---------- MAPS ---------- */
+.mapsapp{ width:100%; display:flex; flex-direction:column; background:#e8e8ec; }
+.mapsapp .maps-toolbar{
+  flex:0 0 auto; display:flex; align-items:center; gap:8px; padding:6px 12px;
+  background:rgba(240,240,243,.92); border-bottom:1px solid rgba(0,0,0,.08); z-index:2;
+}
+.mapsapp .maps-search{
+  flex:1; height:30px; border:none; outline:none; border-radius:8px;
+  background:rgba(0,0,0,.06); padding:0 12px; font-size:13px; color:#333;
+}
+.mapsapp .maps-search:focus{ background:#fff; box-shadow:0 0 0 3px rgba(10,132,255,.35); }
+.mapsapp .maps-btn{
+  border:none; background:rgba(0,0,0,.06); color:#0a84ff; cursor:pointer;
+  height:30px; padding:0 12px; border-radius:8px; font-size:13px; display:flex; align-items:center; gap:6px;
+  white-space:nowrap;
+}
+.mapsapp .maps-btn:hover{ background:rgba(0,0,0,.11); }
+.mapsapp .maps-btn:disabled{ opacity:.5; cursor:default; }
+.mapsapp .map-el{ flex:1; z-index:1; }
+.mapsapp .maps-status{
+  flex:0 0 auto; font-size:12px; color:#86868b; padding:5px 12px;
+  background:rgba(245,245,247,.9); border-top:1px solid rgba(0,0,0,.08);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.gps-dot{
+  width:16px; height:16px; border-radius:50%; background:#0a84ff;
+  border:3px solid #fff; box-shadow:0 0 8px rgba(0,0,0,.4);
+}
+/* ---------- ABOUT ---------- */
+.about{ width:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; padding:24px; background:#fff; }
+.about .big{ font-size:56px; }
+.about h3{ font-size:22px; font-weight:700; }
+.about p{ font-size:13px; color:#86868b; text-align:center; line-height:1.6; }
+/* ---------- MISC ---------- */
+#sleep{
+  position:fixed; inset:0; background:#000; z-index:9000; opacity:0; pointer-events:none;
+  transition:opacity .8s;
+}
+#sleep.on{ opacity:1; pointer-events:auto; }
+::-webkit-scrollbar{ width:8px; height:8px; }
+::-webkit-scrollbar-thumb{ background:rgba(0,0,0,.25); border-radius:4px; }
+::-webkit-scrollbar-track{ background:transparent; }
+@media (prefers-reduced-motion: reduce){
+  *{ transition:none !important; animation:none !important; }
+}
+</style>
+</head>
+<body>
+
+<div id="boot">
+  <div class="apple">&#63743;</div>
+  <div class="bar"><i id="bootbar"></i></div>
+</div>
+
+<div id="desktop"></div>
+<div id="sleep"></div>
+
+<div id="menubar">
+  <div class="mitem apple-m" data-menu="apple">&#63743;</div>
+  <div class="mitem appname" id="mb-appname">Finder</div>
+  <div class="mitem" data-menu="file">File</div>
+  <div class="mitem" data-menu="edit">Modifica</div>
+  <div class="mitem" data-menu="view">Vista</div>
+  <div class="mitem" data-menu="help">Aiuto</div>
+  <div class="spacer"></div>
+  <div class="status">
+    <div class="mitem" id="mb-fullscreen" title="Schermo intero">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+    </div>
+    <div class="mitem">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12.55a11 11 0 0 1 14.08 0M8.53 16.11a6 6 0 0 1 6.95 0M12 20h.01"/></svg>
+    </div>
+    <div class="mitem">
+      <svg viewBox="0 0 28 14" fill="none"><rect x="1" y="1" width="22" height="12" rx="3" stroke="currentColor" stroke-opacity=".5"/><rect x="3" y="3" width="16" height="8" rx="1.5" fill="currentColor"/><path d="M25 5v4c1.2-.3 2-1 2-2s-.8-1.7-2-2z" fill="currentColor" fill-opacity=".5"/></svg>
+    </div>
+    <div class="mitem" id="mb-date"></div>
+    <div class="mitem" id="mb-clock"></div>
+  </div>
+</div>
+
+<div class="dropdown" id="dd-apple">
+  <div class="dd-item" data-act="about">Informazioni su questo Mac</div>
+  <div class="dd-sep"></div>
+  <div class="dd-item" data-act="settings">Impostazioni di Sistema…</div>
+  <div class="dd-sep"></div>
+  <div class="dd-item" data-act="sleep">Stop</div>
+  <div class="dd-item" data-act="restart">Riavvia…</div>
+  <div class="dd-sep"></div>
+  <div class="dd-item" data-act="fullscreen">Schermo intero <span class="kbd">&#8963;&#8984;F</span></div>
+</div>
+<div class="dropdown" id="dd-generic">
+  <div class="dd-item">Nuova finestra <span class="kbd">&#8984;N</span></div>
+  <div class="dd-item">Chiudi <span class="kbd">&#8984;W</span></div>
+  <div class="dd-sep"></div>
+  <div class="dd-item" data-act="fullscreen">Schermo intero</div>
+</div>
+
+<div id="dock-wrap"><div id="dock"></div></div>
+
+<script>
+/* =============== STATE =============== */
+const $ = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+let zTop = 100;
+const openWins = {};   // appId -> window element
+const USER = 'mario';
+const HOST = 'MacBook-Web';
+
+/* =============== WALLPAPERS =============== */
+const WALLPAPERS = [
+  { name:'Laguna', css:`url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='1600' height='1000'><defs><linearGradient id='sea' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='%230e7d9e'/><stop offset='.45' stop-color='%2321b6cf'/><stop offset='.75' stop-color='%2367e3e0'/><stop offset='1' stop-color='%23bdf3ec'/></linearGradient><radialGradient id='shallow' cx='.8' cy='.25' r='.9'><stop offset='0' stop-color='%23f6ecd8'/><stop offset='.35' stop-color='%23aef0e8' stop-opacity='.9'/><stop offset='1' stop-color='%2321b6cf' stop-opacity='0'/></radialGradient></defs><rect width='1600' height='1000' fill='url(%23sea)'/><rect width='1600' height='1000' fill='url(%23shallow)'/><path d='M1600 0 L1600 430 Q1350 380 1180 260 Q1050 160 980 0 Z' fill='%23f2e7cf'/><path d='M1600 0 L1600 300 Q1420 280 1290 190 Q1190 110 1150 0 Z' fill='%233f9f4e'/><path d='M1600 0 L1600 200 Q1480 190 1390 120 Q1330 70 1310 0 Z' fill='%23297c3b'/></svg>`)}")` },
+  { name:'Sequoia', css:'linear-gradient(160deg,#2b1055 0%,#7597de 55%,#c9d6ff 100%)' },
+  { name:'Sonoma', css:'linear-gradient(180deg,#ff9966 0%,#ff5e62 45%,#4b1248 100%)' },
+  { name:'Ventura', css:'linear-gradient(120deg,#f7971e 0%,#ffd200 30%,#f7797d 65%,#c471ed 100%)' },
+  { name:'Monterey', css:'linear-gradient(135deg,#0f0c29 0%,#302b63 50%,#24c6dc 100%)' },
+  { name:'Grafite', css:'linear-gradient(180deg,#232526 0%,#414345 100%)' }
+];
+let currentWp = 0;
+function setWallpaper(i){
+  currentWp = i;
+  $('#desktop').style.background = WALLPAPERS[i].css;
+  $('#desktop').style.backgroundSize = 'cover';
+  $$('.settings .wp').forEach((el,idx)=>el.classList.toggle('sel', idx===i));
+}
+
+/* =============== VIRTUAL FILESYSTEM =============== */
+const FS = {
+  type:'dir', name:'/', children:{
+    'Users': { type:'dir', name:'Users', children:{
+      [USER]: { type:'dir', name:USER, children:{
+        'Desktop':   { type:'dir', name:'Desktop', children:{
+          'benvenuto.txt': { type:'file', name:'benvenuto.txt', content:'Benvenuto in macOS Web!\n\nApri il Terminale e digita "help" per la lista dei comandi.\nI file creati qui sono visibili sia nel Finder che nel Terminale.' }
+        }},
+        'Documents': { type:'dir', name:'Documents', children:{
+          'note.txt': { type:'file', name:'note.txt', content:'Le mie note.\n\n- Fare la spesa\n- Chiamare il dentista\n- Finire il libro' },
+          'Progetti': { type:'dir', name:'Progetti', children:{
+            'readme.md': { type:'file', name:'readme.md', content:'# Progetti\n\nCartella per i tuoi progetti.' }
+          }}
+        }},
+        'Downloads': { type:'dir', name:'Downloads', children:{} },
+        'Music':     { type:'dir', name:'Music', children:{
+          'playlist.txt': { type:'file', name:'playlist.txt', content:'Playlist\n1. Traccia uno\n2. Traccia due\n3. Traccia tre' }
+        }},
+        'Pictures':  { type:'dir', name:'Pictures', children:{} }
+      }}
+    }},
+    'Applications': { type:'dir', name:'Applications', children:{
+      'Safari.app':{type:'file',name:'Safari.app',content:''},
+      'Terminale.app':{type:'file',name:'Terminale.app',content:''},
+      'Note.app':{type:'file',name:'Note.app',content:''},
+      'Calcolatrice.app':{type:'file',name:'Calcolatrice.app',content:''},
+      'Mappe.app':{type:'file',name:'Mappe.app',content:''}
+    }},
+    'System': { type:'dir', name:'System', children:{} }
+  }
+};
+function fsResolve(path){
+  // returns node or null. path absolute like /Users/mario/Desktop
+  if(path === '/') return FS;
+  const parts = path.split('/').filter(Boolean);
+  let node = FS;
+  for(const p of parts){
+    if(node.type !== 'dir' || !node.children[p]) return null;
+    node = node.children[p];
+  }
+  return node;
+}
+function fsNormalize(cwd, input){
+  let p = input.startsWith('~') ? `/Users/${USER}` + input.slice(1)
+        : input.startsWith('/') ? input
+        : cwd.replace(/\/$/,'') + '/' + input;
+  const out = [];
+  for(const seg of p.split('/')){
+    if(seg === '' || seg === '.') continue;
+    if(seg === '..'){ out.pop(); continue; }
+    out.push(seg);
+  }
+  return '/' + out.join('/');
+}
+</script>
+<script>
+/* =============== ICONS (SVG) =============== */
+const ICONS = {
+finder: `<svg viewBox="0 0 64 64"><defs><linearGradient id="fA" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3fc0f5"/><stop offset="1" stop-color="#1a75e8"/></linearGradient></defs><rect width="64" height="64" rx="14" fill="url(#fA)"/><path d="M32 6 C22 20 20 38 24 58 L14 58 C8 58 4 54 4 48 L4 16 C4 10 8 6 14 6 Z" fill="#dff1fd" opacity=".95"/><circle cx="19" cy="27" r="3" fill="#123a6b"/><circle cx="45" cy="27" r="3" fill="#fff"/><path d="M16 42 Q32 52 48 42" stroke="#123a6b" stroke-width="3.4" fill="none" stroke-linecap="round"/></svg>`,
+safari: `<svg viewBox="0 0 64 64"><defs><radialGradient id="sA" cx=".5" cy=".3" r="1"><stop offset="0" stop-color="#3ec9f5"/><stop offset="1" stop-color="#1668e3"/></radialGradient></defs><rect width="64" height="64" rx="14" fill="#f2f2f5"/><circle cx="32" cy="32" r="24" fill="url(#sA)"/><circle cx="32" cy="32" r="24" fill="none" stroke="#fff" stroke-opacity=".35"/><path d="M45 19 L28 28 L19 45 L36 36 Z" fill="#fff"/><path d="M45 19 L28 28 L36 36 Z" fill="#ff3b30"/></svg>`,
+terminal: `<svg viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#1f2023"/><rect x="1.5" y="1.5" width="61" height="61" rx="12.5" fill="none" stroke="#4a4b50"/><path d="M12 20 L24 30 L12 40" stroke="#e8e8e8" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><rect x="28" y="37" width="20" height="5" rx="2.5" fill="#e8e8e8"/></svg>`,
+notes: `<svg viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#fff"/><rect width="64" height="20" rx="14" fill="#ffd60a"/><rect y="12" width="64" height="8" fill="#ffd60a"/><line x1="10" y1="32" x2="54" y2="32" stroke="#d9d9de" stroke-width="2.4"/><line x1="10" y1="42" x2="54" y2="42" stroke="#d9d9de" stroke-width="2.4"/><line x1="10" y1="52" x2="42" y2="52" stroke="#d9d9de" stroke-width="2.4"/></svg>`,
+calc: `<svg viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#2b2b2f"/><rect x="12" y="9" width="40" height="13" rx="3.5" fill="#3b3b40"/><g fill="#ff9f0a"><circle cx="49" cy="31" r="4.6"/><circle cx="49" cy="43" r="4.6"/><circle cx="49" cy="55" r="4.6"/></g><g fill="#a4a4aa"><circle cx="15" cy="31" r="4.6"/><circle cx="26.3" cy="31" r="4.6"/><circle cx="37.7" cy="31" r="4.6"/></g><g fill="#5f5f64"><circle cx="15" cy="43" r="4.6"/><circle cx="26.3" cy="43" r="4.6"/><circle cx="37.7" cy="43" r="4.6"/><circle cx="15" cy="55" r="4.6"/><circle cx="26.3" cy="55" r="4.6"/><circle cx="37.7" cy="55" r="4.6"/></g></svg>`,
+settings: `<svg viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#e8e8ec"/><g transform="translate(32 32)"><circle r="21" fill="#8e8e93"/><g fill="#8e8e93">${Array.from({length:8},(_,i)=>`<rect x="-4" y="-27" width="8" height="10" rx="2.5" transform="rotate(${i*45})"/>`).join('')}</g><circle r="14.5" fill="#cfcfd4"/><circle r="7" fill="#6d6d72"/></g></svg>`,
+maps: `<svg viewBox="0 0 64 64"><defs><linearGradient id="mA" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#eef3e4"/><stop offset="1" stop-color="#dbe8cf"/></linearGradient></defs><rect width="64" height="64" rx="14" fill="url(#mA)"/><path d="M0 40 Q18 30 30 40 T64 36 L64 64 L0 64 Z" fill="#a8d5f2"/><path d="M8 0 L20 64 M40 0 L34 64" stroke="#f5d76e" stroke-width="6" fill="none"/><path d="M0 22 L64 14" stroke="#fff" stroke-width="5"/><g transform="translate(44 16)"><path d="M0 -12 C-7 -12 -11 -7 -11 -1 C-11 6 0 16 0 16 C0 16 11 6 11 -1 C11 -7 7 -12 0 -12 Z" fill="#e64a3b"/><circle r="4.2" cy="-1.5" fill="#fff"/></g></svg>`,
+trash: `<svg viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="none"/><path d="M18 20 L46 20 L43 54 Q42.7 58 38 58 L26 58 Q21.3 58 21 54 Z" fill="#d7dade" stroke="#9aa0a6" stroke-width="1.5"/><rect x="14" y="14" width="36" height="6" rx="3" fill="#c3c8cd" stroke="#9aa0a6" stroke-width="1.2"/><rect x="26" y="9" width="12" height="6" rx="3" fill="#c3c8cd" stroke="#9aa0a6" stroke-width="1.2"/><g stroke="#9aa0a6" stroke-width="1.8"><line x1="26" y1="26" x2="27.5" y2="50"/><line x1="32" y1="26" x2="32" y2="50"/><line x1="38" y1="26" x2="36.5" y2="50"/></g></svg>`
+};
+
+/* =============== WINDOW MANAGER =============== */
+function createWindow({app, title, w=720, h=480, x, y, content}){
+  const win = document.createElement('div');
+  win.className = 'window';
+  const vw = innerWidth, vh = innerHeight;
+  w = Math.min(w, vw-40); h = Math.min(h, vh-90);
+  x = x ?? Math.max(10, (vw - w)/2 + (Math.random()*60-30));
+  y = y ?? Math.max(38, (vh - h)/2.4 + (Math.random()*40-20));
+  Object.assign(win.style, { width:w+'px', height:h+'px', left:x+'px', top:y+'px', zIndex:++zTop });
+  win.innerHTML = `
+    <div class="titlebar">
+      <div class="tlights">
+        <div class="tl close"><span>&#215;</span></div>
+        <div class="tl min"><span>&#8722;</span></div>
+        <div class="tl max"><span>&#8599;</span></div>
+      </div>
+      <div class="title">${title}</div>
+    </div>
+    <div class="win-body"></div>
+    <div class="resizer"></div>`;
+  win.querySelector('.win-body').append(content);
+  document.body.append(win);
+  openWins[app] = win;
+  dockRunning(app, true);
+
+  const focus = () => {
+    $$('.window').forEach(el=>el.classList.add('inactive'));
+    win.classList.remove('inactive');
+    win.style.zIndex = ++zTop;
+    setAppName(title);
+  };
+  focus();
+  win.addEventListener('pointerdown', focus);
+
+  // traffic lights
+  win.querySelector('.tl.close').onclick = e => { e.stopPropagation(); win.remove(); delete openWins[app]; dockRunning(app, openWins[app] ? true : false); };
+  win.querySelector('.tl.min').onclick = e => {
+    e.stopPropagation();
+    win.style.transition = 'transform .3s ease, opacity .3s ease';
+    win.style.transformOrigin = 'bottom center';
+    win.style.transform = 'scale(.1) translateY(300%)';
+    win.style.opacity = '0';
+    setTimeout(()=>{ win.style.display='none'; win.style.transform=''; win.style.opacity=''; win.style.transition=''; }, 300);
+    win.dataset.min = '1';
+  };
+  let saved = null;
+  win.querySelector('.tl.max').onclick = e => {
+    e.stopPropagation();
+    if(!win.classList.contains('maximized')){
+      saved = { l:win.style.left, t:win.style.top, w:win.style.width, h:win.style.height };
+      win.classList.add('maximized');
+      Object.assign(win.style, { left:'0px', top:'28px', width:'100vw', height:'calc(100vh - 28px)' });
+    } else {
+      win.classList.remove('maximized');
+      Object.assign(win.style, { left:saved.l, top:saved.t, width:saved.w, height:saved.h });
+    }
+  };
+
+  // drag
+  const tb = win.querySelector('.titlebar');
+  tb.addEventListener('pointerdown', e => {
+    if(e.target.closest('.tl') || win.classList.contains('maximized')) return;
+    const sx = e.clientX - win.offsetLeft, sy = e.clientY - win.offsetTop;
+    const move = ev => {
+      win.style.left = Math.min(innerWidth-60, Math.max(-win.offsetWidth+120, ev.clientX - sx)) + 'px';
+      win.style.top  = Math.min(innerHeight-40, Math.max(28, ev.clientY - sy)) + 'px';
+    };
+    const up = () => { removeEventListener('pointermove', move); removeEventListener('pointerup', up); };
+    addEventListener('pointermove', move); addEventListener('pointerup', up);
+  });
+  // resize
+  win.querySelector('.resizer').addEventListener('pointerdown', e => {
+    e.stopPropagation();
+    const sw = win.offsetWidth - e.clientX, sh = win.offsetHeight - e.clientY;
+    const move = ev => {
+      win.style.width  = Math.max(320, sw + ev.clientX) + 'px';
+      win.style.height = Math.max(200, sh + ev.clientY) + 'px';
+    };
+    const up = () => { removeEventListener('pointermove', move); removeEventListener('pointerup', up); };
+    addEventListener('pointermove', move); addEventListener('pointerup', up);
+  });
+  return win;
+}
+
+function openApp(app){
+  const existing = openWins[app];
+  if(existing){
+    if(existing.dataset.min){ existing.style.display='flex'; delete existing.dataset.min; }
+    existing.style.zIndex = ++zTop;
+    $$('.window').forEach(el=>el.classList.add('inactive'));
+    existing.classList.remove('inactive');
+    setAppName(existing.querySelector('.title').textContent);
+    return;
+  }
+  APPS[app].launch();
+}
+function setAppName(n){ $('#mb-appname').textContent = n.split(' — ')[0]; }
+function dockRunning(app, on){
+  const el = $(`.dock-item[data-app="${app}"]`);
+  if(el) el.classList.toggle('running', on);
+}
+</script>
+<script>
+/* =============== APPS =============== */
+const APPS = {};
+
+/* ---- FINDER ---- */
+APPS.finder = {
+  title:'Finder',
+  launch(){
+    const el = document.createElement('div');
+    el.className = 'finder';
+    el.innerHTML = `
+      <div class="sidebar">
+        <div class="sb-title">Preferiti</div>
+        <div class="sb-item" data-path="/Users/${USER}/Desktop">&#128421;&#65039; Scrivania</div>
+        <div class="sb-item" data-path="/Users/${USER}/Documents">&#128196; Documenti</div>
+        <div class="sb-item" data-path="/Users/${USER}/Downloads">&#11015;&#65039; Download</div>
+        <div class="sb-item" data-path="/Users/${USER}/Music">&#127925; Musica</div>
+        <div class="sb-item" data-path="/Users/${USER}/Pictures">&#128444;&#65039; Immagini</div>
+        <div class="sb-title">Posizioni</div>
+        <div class="sb-item" data-path="/Applications">&#128640; Applicazioni</div>
+        <div class="sb-item" data-path="/">&#128190; Macintosh HD</div>
+      </div>
+      <div style="flex:1;display:flex;flex-direction:column;overflow:hidden">
+        <div class="main"><div class="fgrid"></div></div>
+        <div class="pathbar"></div>
+      </div>`;
+    let cwd = `/Users/${USER}/Desktop`;
+    const render = () => {
+      const node = fsResolve(cwd);
+      const grid = el.querySelector('.fgrid');
+      grid.innerHTML = '';
+      if(!node || node.type!=='dir') return;
+      const entries = Object.values(node.children);
+      if(entries.length === 0){
+        grid.innerHTML = '<div style="color:#86868b;font-size:13px;padding:20px">Cartella vuota</div>';
+      }
+      for(const c of entries){
+        const it = document.createElement('div');
+        it.className = 'fitem';
+        const isApp = c.name.endsWith('.app');
+        const ic = c.type==='dir' ? '&#128193;' : isApp ? '&#128640;' : c.name.endsWith('.md')||c.name.endsWith('.txt') ? '&#128196;' : '&#128441;';
+        it.innerHTML = `<div class="fic">${ic}</div><div class="fname">${c.name}</div>`;
+        it.ondblclick = () => {
+          if(c.type==='dir'){ cwd = fsNormalize(cwd, c.name); render(); }
+          else if(isApp){
+            const map = {'Safari.app':'safari','Terminale.app':'terminal','Note.app':'notes','Calcolatrice.app':'calc','Mappe.app':'maps'};
+            if(map[c.name]) openApp(map[c.name]);
+          }
+          else openTextFile(fsNormalize(cwd, c.name));
+        };
+        grid.append(it);
+      }
+      el.querySelector('.pathbar').textContent = '&#128193; ' .replace('&#128193; ','📁 ') + cwd;
+      el.querySelectorAll('.sb-item').forEach(s=>s.classList.toggle('sel', s.dataset.path===cwd));
+    };
+    el.querySelectorAll('.sb-item').forEach(s => s.onclick = () => { cwd = s.dataset.path; render(); });
+    render();
+    const win = createWindow({app:'finder', title:'Finder', w:760, h:480, content:el});
+    win._refresh = render;
+  }
+};
+
+/* open a text file in Notes-like editor */
+function openTextFile(path){
+  const node = fsResolve(path);
+  if(!node) return;
+  const el = document.createElement('div');
+  el.className = 'notes';
+  const ta = document.createElement('textarea');
+  ta.value = node.content;
+  ta.oninput = () => { node.content = ta.value; };
+  el.append(ta);
+  createWindow({app:'file:'+path, title:node.name + ' — TextEdit', w:560, h:420, content:el});
+}
+
+/* ---- TERMINAL ---- */
+APPS.terminal = {
+  title:'Terminale',
+  launch(){
+    const el = document.createElement('div');
+    el.className = 'terminal';
+    let cwd = `/Users/${USER}`;
+    const short = p => p.replace(`/Users/${USER}`, '~') || '/';
+    const out = (txt, cls='') => {
+      const d = document.createElement('div');
+      d.className = 'tline ' + cls;
+      d.textContent = txt;
+      el.insertBefore(d, inWrap);
+      el.scrollTop = el.scrollHeight;
+    };
+    const outHTML = html => {
+      const d = document.createElement('div');
+      d.className = 'tline';
+      d.innerHTML = html;
+      el.insertBefore(d, inWrap);
+      el.scrollTop = el.scrollHeight;
+    };
+    const inWrap = document.createElement('div');
+    inWrap.className = 'tin';
+    const promptEl = document.createElement('span');
+    const input = document.createElement('input');
+    input.spellcheck = false; input.autocapitalize = 'off'; input.autocomplete='off';
+    inWrap.append(promptEl, input);
+    el.append(inWrap);
+    const setPrompt = () => promptEl.innerHTML =
+      `<span class="prompt-user">${USER}@${HOST}</span> <span class="prompt-path">${short(cwd)}</span> % `;
+    setPrompt();
+    el.onclick = () => input.focus();
+
+    const history = []; let hIdx = -1;
+
+    const CMDS = {
+      help(){ out(
+`Comandi disponibili:
+  ls [path]        elenca file e cartelle
+  cd <path>        cambia directory
+  pwd              directory corrente
+  cat <file>       mostra contenuto file
+  echo <testo>     stampa testo ("echo x > file" scrive su file)
+  touch <file>     crea file vuoto
+  mkdir <dir>      crea cartella
+  rm <file|dir>    elimina
+  open <app>       apri app (safari, note, calcolatrice, finder, impostazioni)
+  date             data e ora
+  whoami / uname   info sistema
+  neofetch         info sistema (fancy)
+  clear            pulisci schermo
+  exit             chiudi terminale`); },
+      pwd(){ out(cwd); },
+      whoami(){ out(USER); },
+      uname(){ out('Darwin ' + HOST + ' 25.0.0 WebKernel x86_64'); },
+      date(){ out(new Date().toString()); },
+      clear(){ el.querySelectorAll('.tline').forEach(n=>n.remove()); },
+      exit(){ openWins['terminal']?.querySelector('.tl.close').click(); },
+      ls(args){
+        const p = args[0] ? fsNormalize(cwd, args[0]) : cwd;
+        const node = fsResolve(p);
+        if(!node){ out(`ls: ${args[0]}: No such file or directory`); return; }
+        if(node.type==='file'){ out(node.name); return; }
+        const names = Object.values(node.children).map(c => c.type==='dir' ? c.name+'/' : c.name);
+        out(names.join('   ') || '');
+      },
+      cd(args){
+        const p = args[0] ? fsNormalize(cwd, args[0]) : `/Users/${USER}`;
+        const node = fsResolve(p);
+        if(!node || node.type!=='dir'){ out(`cd: no such directory: ${args[0]}`); return; }
+        cwd = p; setPrompt();
+      },
+      cat(args){
+        if(!args[0]){ out('usage: cat <file>'); return; }
+        const node = fsResolve(fsNormalize(cwd, args[0]));
+        if(!node || node.type!=='file'){ out(`cat: ${args[0]}: No such file`); return; }
+        out(node.content);
+      },
+      touch(args){
+        if(!args[0]){ out('usage: touch <file>'); return; }
+        const p = fsNormalize(cwd, args[0]);
+        const dir = fsResolve(p.slice(0, p.lastIndexOf('/')) || '/');
+        const name = p.slice(p.lastIndexOf('/')+1);
+        if(!dir || dir.type!=='dir'){ out('touch: invalid path'); return; }
+        if(!dir.children[name]) dir.children[name] = { type:'file', name, content:'' };
+        refreshFinder();
+      },
+      mkdir(args){
+        if(!args[0]){ out('usage: mkdir <dir>'); return; }
+        const p = fsNormalize(cwd, args[0]);
+        const dir = fsResolve(p.slice(0, p.lastIndexOf('/')) || '/');
+        const name = p.slice(p.lastIndexOf('/')+1);
+        if(!dir || dir.type!=='dir'){ out('mkdir: invalid path'); return; }
+        if(dir.children[name]){ out(`mkdir: ${name}: File exists`); return; }
+        dir.children[name] = { type:'dir', name, children:{} };
+        refreshFinder();
+      },
+      rm(args){
+        if(!args[0]){ out('usage: rm <file|dir>'); return; }
+        const p = fsNormalize(cwd, args[0]);
+        if(p === '/' || p === `/Users` ){ out('rm: operation not permitted'); return; }
+        const dir = fsResolve(p.slice(0, p.lastIndexOf('/')) || '/');
+        const name = p.slice(p.lastIndexOf('/')+1);
+        if(!dir || !dir.children[name]){ out(`rm: ${args[0]}: No such file or directory`); return; }
+        delete dir.children[name];
+        refreshFinder();
+      },
+      echo(args, raw){
+        const m = raw.match(/^echo\s+(.*?)\s*>\s*(\S+)$/);
+        if(m){
+          const p = fsNormalize(cwd, m[2]);
+          const dir = fsResolve(p.slice(0, p.lastIndexOf('/')) || '/');
+          const name = p.slice(p.lastIndexOf('/')+1);
+          if(!dir || dir.type!=='dir'){ out('echo: invalid path'); return; }
+          dir.children[name] = { type:'file', name, content:m[1].replace(/^["']|["']$/g,'') };
+          refreshFinder();
+          return;
+        }
+        out(args.join(' ').replace(/^["']|["']$/g,''));
+      },
+      open(args){
+        const map = { safari:'safari', note:'notes', notes:'notes', calcolatrice:'calc', calc:'calc',
+                      finder:'finder', impostazioni:'settings', settings:'settings', terminale:'terminal',
+                      mappe:'maps', maps:'maps' };
+        const a = map[(args[0]||'').toLowerCase()];
+        if(a) openApp(a); else out(`open: app non trovata: ${args[0]||''}`);
+      },
+      neofetch(){
+        outHTML(`<span style="color:#6cd97e">                    'c.
+                 ,xNMM.          <b>${USER}</b>@<b>${HOST}</b>
+               .OMMMMo           -----------------
+               OMMM0,            <b>OS</b>: macOS Web 1.0
+     .;loddo:' loolloddol;.      <b>Kernel</b>: WebKernel (browser)
+   cKMMMMMMMMMMNWMMMMMMMMMM0:    <b>Shell</b>: zsh (simulata)
+  XMMMMMMMMMMMMMMMMMMMMMMMWd.    <b>Risoluzione</b>: ${innerWidth}x${innerHeight}
+  XMMMMMMMMMMMMMMMMMMMMMMMX.     <b>Motore</b>: ${navigator.userAgent.includes('Firefox')?'Gecko':navigator.userAgent.includes('Chrome')?'Blink':'WebKit'}
+  ;MMMMMMMMMMMMMMMMMMMMMMMM:     <b>Memoria FS</b>: RAM (volatile)
+   .XMMMMMMMMMMMMMMMMMMMMMMk
+    'XMMMMMMMMMMMMMMMMMMMMK.
+      kMMMMMMMMMMMMMMMMMMd
+       ;KMMMMMMMWXXWMMMMMk.
+         .cooc,.    .,coo:.</span>`);
+      }
+    };
+    const run = raw => {
+      const parts = raw.trim().split(/\s+/);
+      const cmd = parts[0]; const args = parts.slice(1);
+      if(!cmd) return;
+      if(CMDS[cmd]) CMDS[cmd](args, raw.trim());
+      else out(`zsh: command not found: ${cmd}`);
+    };
+    input.addEventListener('keydown', e => {
+      if(e.key === 'Enter'){
+        const raw = input.value;
+        outHTML(promptEl.innerHTML + escapeHtml(raw));
+        if(raw.trim()){ history.push(raw); hIdx = history.length; }
+        input.value = '';
+        run(raw);
+      } else if(e.key === 'ArrowUp'){ e.preventDefault(); if(hIdx>0){ hIdx--; input.value = history[hIdx]; } }
+      else if(e.key === 'ArrowDown'){ e.preventDefault(); if(hIdx<history.length-1){ hIdx++; input.value = history[hIdx]; } else { hIdx = history.length; input.value=''; } }
+    });
+    out(`Ultimo accesso: ${new Date().toLocaleString('it-IT')} su console`);
+    out('Digita "help" per la lista dei comandi.\n');
+    createWindow({app:'terminal', title:`Terminale — ${USER}@${HOST}`, w:680, h:420, content:el});
+    setTimeout(()=>input.focus(), 50);
+  }
+};
+function escapeHtml(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function refreshFinder(){ openWins['finder']?._refresh?.(); }
+</script>
+<script>
+/* ---- SAFARI ---- */
+const START_PAGE = `data:text/html;charset=utf-8,` + encodeURIComponent(`<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+body{font-family:-apple-system,'Segoe UI',sans-serif;background:#f5f5f7;display:flex;flex-direction:column;align-items:center;padding-top:60px;margin:0}
+h1{font-size:26px;color:#1d1d1f;font-weight:700}
+p{color:#86868b;font-size:13px;max-width:420px;text-align:center;line-height:1.6}
+.tiles{display:grid;grid-template-columns:repeat(4,110px);gap:18px;margin-top:34px}
+a{display:flex;flex-direction:column;align-items:center;gap:8px;text-decoration:none;color:#333;font-size:12px}
+a .t{width:64px;height:64px;border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:30px;background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.08)}
+</style></head><body>
+<h1>Preferiti</h1>
+<p>Nota: molti siti (Google, YouTube, social) bloccano l'apertura dentro altre pagine. Questi funzionano:</p>
+<div class="tiles">
+<a href="https://it.wikipedia.org" target="_self"><div class="t">&#128218;</div>Wikipedia</a>
+<a href="https://www.bing.com" target="_self"><div class="t">&#128269;</div>Bing</a>
+<a href="https://www.openstreetmap.org" target="_self"><div class="t">&#128506;</div>OpenStreetMap</a>
+<a href="https://archive.org" target="_self"><div class="t">&#127963;</div>Archive.org</a>
+<a href="https://example.com" target="_self"><div class="t">&#127760;</div>Example</a>
+<a href="https://www.wolframalpha.com" target="_self"><div class="t">&#8721;</div>WolframAlpha</a>
+<a href="https://duckduckgo.com/html/" target="_self"><div class="t">&#129417;</div>DuckDuckGo</a>
+<a href="https://lite.cnn.com" target="_self"><div class="t">&#128240;</div>CNN Lite</a>
+</div></body></html>`);
+
+APPS.safari = {
+  title:'Safari',
+  launch(){
+    const el = document.createElement('div');
+    el.className = 'safari';
+    el.innerHTML = `
+      <div class="toolbar">
+        <button class="nav-btn" data-nav="back">&#8249;</button>
+        <button class="nav-btn" data-nav="fwd">&#8250;</button>
+        <button class="nav-btn" data-nav="reload">&#8635;</button>
+        <input class="urlbar" placeholder="Cerca o inserisci un sito" spellcheck="false">
+        <button class="nav-btn" data-nav="home">&#8962;</button>
+      </div>
+      <iframe sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>`;
+    const frame = el.querySelector('iframe');
+    const url = el.querySelector('.urlbar');
+    const go = raw => {
+      raw = raw.trim();
+      if(!raw) return;
+      let target;
+      if(/^https?:\/\//.test(raw)) target = raw;
+      else if(/^[\w-]+(\.[\w-]+)+(\/.*)?$/.test(raw)) target = 'https://' + raw;
+      else target = 'https://www.bing.com/search?q=' + encodeURIComponent(raw);
+      frame.src = target;
+      url.value = target.startsWith('data:') ? '' : target;
+    };
+    url.addEventListener('keydown', e => { if(e.key==='Enter') go(url.value); });
+    el.querySelector('[data-nav="back"]').onclick   = () => { try{ frame.contentWindow.history.back(); }catch(e){} };
+    el.querySelector('[data-nav="fwd"]').onclick    = () => { try{ frame.contentWindow.history.forward(); }catch(e){} };
+    el.querySelector('[data-nav="reload"]').onclick = () => { frame.src = frame.src; };
+    el.querySelector('[data-nav="home"]').onclick   = () => { frame.src = START_PAGE; url.value=''; };
+    frame.src = START_PAGE;
+    createWindow({app:'safari', title:'Safari', w:960, h:620, content:el});
+  }
+};
+
+/* ---- NOTES (multi-nota, salvate in ~/Documents/Note) ---- */
+function notesDir(){
+  const docs = fsResolve(`/Users/${USER}/Documents`);
+  if(!docs.children['Note']){
+    docs.children['Note'] = { type:'dir', name:'Note', children:{
+      'Benvenuto.txt': { type:'file', name:'Benvenuto.txt',
+        content:'Benvenuto\n\nQuesta è la tua prima nota. Usa + per crearne di nuove.\nLe note sono file .txt in Documenti/Note: le vedi anche nel Finder e nel Terminale.' }
+    }};
+  }
+  return docs.children['Note'];
+}
+APPS.notes = {
+  title:'Note',
+  launch(){
+    const dir = notesDir();
+    const el = document.createElement('div');
+    el.className = 'notesapp';
+    el.innerHTML = `
+      <div class="n-side">
+        <div class="n-tools">
+          <button class="n-btn" data-n="new" title="Nuova nota">&#43;</button>
+          <button class="n-btn" data-n="del" title="Elimina nota">&#128465;</button>
+        </div>
+        <div class="n-list"></div>
+      </div>
+      <div class="n-editor">
+        <textarea placeholder="Scrivi qui la tua nota…" spellcheck="false"></textarea>
+      </div>`;
+    const list = el.querySelector('.n-list');
+    const ta = el.querySelector('textarea');
+    let currentKey = null;
+
+    const titleOf = node => (node.content.split('\n')[0].trim() || 'Nuova nota');
+    const previewOf = node => (node.content.split('\n').slice(1).join(' ').trim().slice(0, 60) || 'Nessun testo aggiuntivo');
+
+    const renderList = () => {
+      list.innerHTML = '';
+      const keys = Object.keys(dir.children);
+      if(keys.length === 0){
+        list.innerHTML = '<div class="n-empty">Nessuna nota.<br>Premi + per crearne una.</div>';
+        ta.value = ''; ta.disabled = true; currentKey = null;
+        return;
+      }
+      ta.disabled = false;
+      if(!currentKey || !dir.children[currentKey]) currentKey = keys[0];
+      for(const k of keys){
+        const node = dir.children[k];
+        const it = document.createElement('div');
+        it.className = 'n-item' + (k === currentKey ? ' sel' : '');
+        it.innerHTML = `<div class="n-title"></div><div class="n-prev"></div>`;
+        it.querySelector('.n-title').textContent = titleOf(node);
+        it.querySelector('.n-prev').textContent = previewOf(node);
+        it.onclick = () => { currentKey = k; ta.value = node.content; renderList(); ta.focus(); };
+        list.append(it);
+      }
+      ta.value = dir.children[currentKey].content;
+    };
+
+    ta.oninput = () => {
+      if(!currentKey) return;
+      const node = dir.children[currentKey];
+      node.content = ta.value;
+      // aggiorna titolo/anteprima nella lista senza rifare tutto
+      const sel = list.querySelector('.n-item.sel');
+      if(sel){
+        sel.querySelector('.n-title').textContent = titleOf(node);
+        sel.querySelector('.n-prev').textContent = previewOf(node);
+      }
+    };
+
+    el.querySelector('[data-n="new"]').onclick = () => {
+      let n = 1, name;
+      do { name = `Nota ${n}.txt`; n++; } while(dir.children[name]);
+      dir.children[name] = { type:'file', name, content:'' };
+      currentKey = name;
+      renderList();
+      refreshFinder();
+      ta.focus();
+    };
+    el.querySelector('[data-n="del"]').onclick = () => {
+      if(!currentKey) return;
+      if(!confirm(`Eliminare "${titleOf(dir.children[currentKey])}"?`)) return;
+      delete dir.children[currentKey];
+      currentKey = null;
+      renderList();
+      refreshFinder();
+    };
+
+    renderList();
+    createWindow({app:'notes', title:'Note', w:720, h:480, content:el});
+  }
+};
+
+/* ---- CALCULATOR ---- */
+APPS.calc = {
+  title:'Calcolatrice',
+  launch(){
+    const el = document.createElement('div');
+    el.className = 'calc';
+    el.innerHTML = `<div class="display">0</div><div class="keys"></div>`;
+    const disp = el.querySelector('.display');
+    const keys = [
+      ['AC','fn'],['+/-','fn'],['%','fn'],['÷','op'],
+      ['7',''],['8',''],['9',''],['×','op'],
+      ['4',''],['5',''],['6',''],['−','op'],
+      ['1',''],['2',''],['3',''],['+','op'],
+      ['0','zero'],[',',''],['=','op']
+    ];
+    let cur = '0', prev = null, op = null, fresh = true;
+    const fmt = n => {
+      if(!isFinite(n)) return 'Errore';
+      let s = parseFloat(n.toPrecision(12)).toString();
+      return s.replace('.', ',');
+    };
+    const val = () => parseFloat(cur.replace(',', '.'));
+    const apply = () => {
+      if(op === null || prev === null) return;
+      const a = prev, b = val();
+      let r = op==='+'?a+b : op==='−'?a-b : op==='×'?a*b : b===0?Infinity:a/b;
+      cur = fmt(r); prev = null; op = null; fresh = true;
+    };
+    const press = k => {
+      if(k >= '0' && k <= '9'){
+        if(fresh){ cur = k; fresh = false; }
+        else cur = cur === '0' ? k : cur + k;
+      } else if(k === ','){
+        if(fresh){ cur = '0,'; fresh = false; }
+        else if(!cur.includes(',')) cur += ',';
+      } else if(k === 'AC'){ cur='0'; prev=null; op=null; fresh=true; }
+      else if(k === '+/-'){ cur = fmt(-val()); }
+      else if(k === '%'){ cur = fmt(val()/100); }
+      else if(k === '='){ apply(); }
+      else { // operator
+        if(op && !fresh) apply();
+        prev = val(); op = k; fresh = true;
+      }
+      disp.textContent = cur;
+      disp.style.fontSize = cur.length > 9 ? '30px' : '46px';
+    };
+    for(const [k, cls] of keys){
+      const b = document.createElement('button');
+      b.textContent = k; if(cls) b.className = cls;
+      b.onclick = () => press(k);
+      el.querySelector('.keys').append(b);
+    }
+    createWindow({app:'calc', title:'Calcolatrice', w:280, h:440, content:el});
+  }
+};
+
+/* ---- SETTINGS ---- */
+APPS.settings = {
+  title:'Impostazioni di Sistema',
+  launch(){
+    const el = document.createElement('div');
+    el.className = 'settings';
+    el.innerHTML = `<h2>Sfondo scrivania</h2><div class="wp-grid"></div>
+      <div class="row">Suggerimento: usa l'icona <b>&#8599;</b> nella barra dei menu per lo schermo intero.</div>`;
+    const grid = el.querySelector('.wp-grid');
+    WALLPAPERS.forEach((wp, i) => {
+      const d = document.createElement('div');
+      d.className = 'wp' + (i===currentWp?' sel':'');
+      d.style.background = wp.css; d.style.backgroundSize = 'cover';
+      d.innerHTML = `<div class="wpn">${wp.name}</div>`;
+      d.onclick = () => setWallpaper(i);
+      grid.append(d);
+    });
+    createWindow({app:'settings', title:'Impostazioni di Sistema', w:620, h:420, content:el});
+  }
+};
+
+/* ---- MAPS (Leaflet + OpenStreetMap, GPS senza navigatore) ---- */
+let leafletLoading = null;
+function loadLeaflet(){
+  if(window.L) return Promise.resolve();
+  if(leafletLoading) return leafletLoading;
+  leafletLoading = new Promise((resolve, reject) => {
+    const css = document.createElement('link');
+    css.rel = 'stylesheet';
+    css.href = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css';
+    document.head.append(css);
+    const js = document.createElement('script');
+    js.src = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js';
+    js.onload = resolve;
+    js.onerror = () => reject(new Error('Leaflet non caricato (connessione assente?)'));
+    document.head.append(js);
+  });
+  return leafletLoading;
+}
+
+APPS.maps = {
+  title:'Mappe',
+  launch(){
+    const el = document.createElement('div');
+    el.className = 'mapsapp';
+    el.innerHTML = `
+      <div class="maps-toolbar">
+        <input class="maps-search" placeholder="Cerca un luogo (es. Foggia)" spellcheck="false">
+        <button class="maps-btn" data-m="locate">&#10148; La mia posizione</button>
+        <button class="maps-btn" data-m="follow" title="Segui la posizione in tempo reale">&#9679; Segui</button>
+      </div>
+      <div class="map-el" style="display:flex;align-items:center;justify-content:center;color:#86868b;font-size:13px">Caricamento mappa…</div>
+      <div class="maps-status">Pronto</div>`;
+    const status = msg => el.querySelector('.maps-status').textContent = msg;
+    const win = createWindow({app:'maps', title:'Mappe', w:860, h:560, content:el});
+
+    loadLeaflet().then(() => {
+      const mapDiv = el.querySelector('.map-el');
+      mapDiv.textContent = '';
+      const map = L.map(mapDiv, { zoomControl:true }).setView([41.9, 12.5], 6); // Italia
+      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; OpenStreetMap contributors'
+      }).addTo(map);
+      // resize map when window resizes
+      new ResizeObserver(() => map.invalidateSize()).observe(mapDiv);
+
+      let marker = null, circle = null, watchId = null, following = false;
+      const gpsIcon = L.divIcon({ className:'', html:'<div class="gps-dot"></div>', iconSize:[16,16], iconAnchor:[8,8] });
+
+      const showPos = (pos, fly) => {
+        const { latitude:lat, longitude:lng, accuracy } = pos.coords;
+        if(!marker){
+          marker = L.marker([lat,lng], { icon:gpsIcon }).addTo(map);
+          circle = L.circle([lat,lng], { radius:accuracy, color:'#0a84ff', weight:1, fillOpacity:.12 }).addTo(map);
+        } else {
+          marker.setLatLng([lat,lng]);
+          circle.setLatLng([lat,lng]).setRadius(accuracy);
+        }
+        if(fly) map.flyTo([lat,lng], Math.max(map.getZoom(), 16), { duration:1.2 });
+        status(`Posizione: ${lat.toFixed(5)}, ${lng.toFixed(5)} — precisione ±${Math.round(accuracy)} m`);
+      };
+      const gpsError = err => {
+        const msgs = {1:'Permesso negato. Il GPS richiede HTTPS o localhost e il consenso del browser.',
+                      2:'Posizione non disponibile.', 3:'Timeout nella richiesta di posizione.'};
+        status('GPS: ' + (msgs[err.code] || err.message));
+      };
+
+      el.querySelector('[data-m="locate"]').onclick = () => {
+        if(!navigator.geolocation){ status('GPS non supportato da questo browser.'); return; }
+        status('Richiesta posizione…');
+        navigator.geolocation.getCurrentPosition(p => showPos(p, true), gpsError,
+          { enableHighAccuracy:true, timeout:10000, maximumAge:5000 });
+      };
+
+      const followBtn = el.querySelector('[data-m="follow"]');
+      followBtn.onclick = () => {
+        if(!navigator.geolocation){ status('GPS non supportato da questo browser.'); return; }
+        following = !following;
+        if(following){
+          followBtn.style.background = '#0a84ff'; followBtn.style.color = '#fff';
+          status('Tracking attivo…');
+          watchId = navigator.geolocation.watchPosition(p => showPos(p, true), gpsError,
+            { enableHighAccuracy:true, maximumAge:2000 });
+        } else {
+          followBtn.style.background = ''; followBtn.style.color = '';
+          if(watchId !== null) navigator.geolocation.clearWatch(watchId);
+          watchId = null; status('Tracking disattivato.');
+        }
+      };
+      // stop watching when window closes
+      const closeBtn = win.querySelector('.tl.close');
+      const origClose = closeBtn.onclick;
+      closeBtn.onclick = e => { if(watchId !== null) navigator.geolocation.clearWatch(watchId); origClose(e); };
+
+      // search (Nominatim, no routing)
+      const search = el.querySelector('.maps-search');
+      let searchMarker = null;
+      search.addEventListener('keydown', async e => {
+        if(e.key !== 'Enter' || !search.value.trim()) return;
+        status('Ricerca…');
+        try{
+          const r = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(search.value.trim()));
+          const res = await r.json();
+          if(!res.length){ status('Nessun risultato per "' + search.value.trim() + '"'); return; }
+          const { lat, lon, display_name } = res[0];
+          if(searchMarker) searchMarker.remove();
+          searchMarker = L.marker([+lat, +lon]).addTo(map).bindPopup(display_name).openPopup();
+          map.flyTo([+lat, +lon], 13, { duration:1.2 });
+          status(display_name);
+        }catch(err){ status('Ricerca non riuscita (connessione?).'); }
+      });
+      status('Mappa pronta. "La mia posizione" richiede il consenso GPS del browser.');
+    }).catch(err => {
+      el.querySelector('.map-el').textContent = err.message;
+      status('Errore di caricamento.');
+    });
+  }
+};
+
+/* ---- ABOUT ---- */
+APPS.about = {
+  title:'Informazioni',
+  launch(){
+    const el = document.createElement('div');
+    el.className = 'about';
+    el.innerHTML = `
+      <div class="big">&#128421;&#65039;</div>
+      <h3>macOS Web</h3>
+      <p>Versione 1.0 — emulazione dell'interfaccia macOS nel browser<br>
+      Finder &middot; Terminale &middot; Safari &middot; Note &middot; Calcolatrice &middot; Impostazioni<br><br>
+      Filesystem virtuale in RAM (si azzera al ricaricamento).<br>
+      Nessun rapporto con Apple Inc. — replica a scopo dimostrativo.</p>`;
+    createWindow({app:'about', title:'Informazioni su questo Mac', w:420, h:320, content:el});
+  }
+};
+
+/* ---- TRASH (stub) ---- */
+APPS.trash = {
+  title:'Cestino',
+  launch(){
+    const el = document.createElement('div');
+    el.style.cssText = 'width:100%;display:flex;align-items:center;justify-content:center;color:#86868b;font-size:14px;background:#fff';
+    el.textContent = 'Il cestino è vuoto';
+    createWindow({app:'trash', title:'Cestino', w:480, h:320, content:el});
+  }
+};
+</script>
+<script>
+/* =============== DOCK BUILD + MAGNIFICATION =============== */
+const DOCK_APPS = [
+  ['finder','Finder'], ['safari','Safari'], ['terminal','Terminale'],
+  ['notes','Note'], ['calc','Calcolatrice'], ['maps','Mappe'], ['settings','Impostazioni'],
+  ['sep'], ['trash','Cestino']
+];
+const dock = $('#dock');
+for(const [id, label] of DOCK_APPS){
+  if(id === 'sep'){ const s = document.createElement('div'); s.className='dock-sep'; dock.append(s); continue; }
+  const d = document.createElement('div');
+  d.className = 'dock-item'; d.dataset.app = id;
+  d.innerHTML = ICONS[id] + `<div class="dot"></div><div class="tip">${label}</div>`;
+  d.onclick = () => openApp(id);
+  dock.append(d);
+}
+// magnification
+const BASE = 52, MAX = 78, RANGE = 130;
+dock.addEventListener('mousemove', e => {
+  $$('.dock-item').forEach(it => {
+    const r = it.getBoundingClientRect();
+    const dist = Math.abs(e.clientX - (r.left + r.width/2));
+    const scale = dist > RANGE ? 0 : (1 - dist/RANGE);
+    const size = BASE + (MAX-BASE) * scale * scale;
+    it.style.width = it.style.height = size + 'px';
+  });
+});
+dock.addEventListener('mouseleave', () => {
+  $$('.dock-item').forEach(it => { it.style.width = it.style.height = BASE + 'px'; });
+});
+
+/* =============== MENU BAR =============== */
+function updateClock(){
+  const n = new Date();
+  $('#mb-clock').textContent = n.toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'});
+  $('#mb-date').textContent = n.toLocaleDateString('it-IT', {weekday:'short', day:'numeric', month:'short'});
+}
+updateClock(); setInterval(updateClock, 10000);
+
+let openMenu = null;
+function closeMenus(){
+  $$('.dropdown').forEach(d=>d.classList.remove('show'));
+  $$('#menubar .mitem').forEach(m=>m.classList.remove('open'));
+  openMenu = null;
+}
+$$('#menubar .mitem[data-menu]').forEach(m => {
+  m.addEventListener('click', e => {
+    e.stopPropagation();
+    const which = m.dataset.menu;
+    if(openMenu === which){ closeMenus(); return; }
+    closeMenus();
+    const dd = which === 'apple' ? $('#dd-apple') : $('#dd-generic');
+    const r = m.getBoundingClientRect();
+    dd.style.left = r.left + 'px';
+    dd.style.top = 'calc(var(--menubar-h) + 2px)';
+    dd.classList.add('show');
+    m.classList.add('open');
+    openMenu = which;
+  });
+});
+document.addEventListener('click', closeMenus);
+
+function toggleFullscreen(){
+  if(!document.fullscreenElement) document.documentElement.requestFullscreen().catch(()=>{});
+  else document.exitFullscreen();
+}
+$('#mb-fullscreen').onclick = toggleFullscreen;
+
+$$('.dropdown .dd-item').forEach(it => {
+  it.addEventListener('click', e => {
+    e.stopPropagation();
+    const act = it.dataset.act;
+    closeMenus();
+    if(act === 'about') openApp('about');
+    else if(act === 'settings') openApp('settings');
+    else if(act === 'fullscreen') toggleFullscreen();
+    else if(act === 'restart') location.reload();
+    else if(act === 'sleep'){
+      $('#sleep').classList.add('on');
+      const wake = () => { $('#sleep').classList.remove('on'); removeEventListener('keydown', wake); };
+      setTimeout(()=>{ $('#sleep').addEventListener('click', wake, {once:true}); addEventListener('keydown', wake, {once:true}); }, 900);
+    }
+  });
+});
+
+// keyboard shortcut ctrl+cmd+F / F11-like
+addEventListener('keydown', e => {
+  if((e.ctrlKey && e.metaKey && e.key.toLowerCase()==='f')) { e.preventDefault(); toggleFullscreen(); }
+});
+
+/* =============== BOOT SEQUENCE =============== */
+setWallpaper(0);
+let bp = 0;
+const bootInt = setInterval(()=>{
+  bp = Math.min(100, bp + 8 + Math.random()*14);
+  $('#bootbar').style.width = bp + '%';
+  if(bp >= 100){
+    clearInterval(bootInt);
+    setTimeout(()=>{
+      $('#boot').classList.add('done');
+      setTimeout(()=>{ $('#boot').remove(); openApp('finder'); }, 850);
+    }, 350);
+  }
+}, 160);
+</script>
+</body>
+</html>
